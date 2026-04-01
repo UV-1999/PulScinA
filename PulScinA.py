@@ -115,7 +115,7 @@ group1.add_argument('-fspec',
 
 group3.add_argument('-onw',
                            help = 'onpulse-width : take 1/(ONW) th of maximum as onpulse width. ONW is +ve int, default is 10',
-                           type = int)
+                           type = int, default = 10)
 
 args = parser.parse_args()
 
