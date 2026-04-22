@@ -285,24 +285,42 @@ def autocorrelation_spectrum(self, return_data=False):
     self = np.rot90(self.reshape(a.get_nsubint(), a.get_nchan()))
 
     # Definition of autocorrelation spectrum
-    self = 10*np.log10(np.abs(np.fft.fftshift(np.fft.ifft(np.fft.fft2(self)*np.conjugate((np.fft.fft2(self)))))))
-
+	self = self - np.mean(self)
+	fft = np.fft.fft2(self)
+	acf = np.fft.fftshift(np.fft.ifft(fft * np.conjugate(fft))).real
+	acf = acf / np.max(acf)
+	acf_data = acf
+	plot_acf = np.log10(acf_data + 1e-12)
+	
     # Axes
-    time_lag = np.fft.fftshift(np.fft.fftfreq(nsub, d=tobs/nsub))
-    freq_lag = np.fft.fftshift(np.fft.fftfreq(nchan, d=np.abs(a.get_bandwidth())/nchan))
+    #time_lag = np.fft.fftshift(np.fft.fftfreq(nsub, d=tobs/nsub))
+    #freq_lag = np.fft.fftshift(np.fft.fftfreq(nchan, d=np.abs(a.get_bandwidth())/nchan))
+
+	dt = tobs / nsub
+	#time_lag = np.arange(-nsub//2, nsub//2) * dt
+	df = np.abs(a.get_bandwidth()) / nchan
+	#freq_lag = np.arange(-nchan//2, nchan//2) * df
+
+	time_lag = (np.arange(nsub) - nsub//2) * dt
+	freq_lag = (np.arange(nchan) - nchan//2) * df
   
     # Plotting
-    plt.xlabel('Time (in min) with nsub=' + str(nsub))
-    plt.ylabel('Frequency (in MHz) with nchan=' + str(nchan))
+    #plt.xlabel('Time (in min) with nsub=' + str(nsub))
+    #plt.ylabel('Frequency (in MHz) with nchan=' + str(nchan))
+	plt.figure()
+	plt.xlabel('Time lag (s)')
+	plt.ylabel('Frequency lag (MHz)')
     plt.title(fits + "\nAutocorrelation spectrum")
     plt.set_cmap('plasma')
-    plt.imshow(self, extent=(0,tobs/60.0,freq_lo,freq_hi), aspect = 'auto')
+	#self_plot = 10*np.log10(np.abs(np.fft.fftshift(np.fft.ifft(np.fft.fft2(self)*np.conjugate((np.fft.fft2(self)))))))
+    #plt.imshow(self, extent=(0,tobs/60.0,freq_lo,freq_hi), aspect = 'auto')
+	plt.imshow(plot_acf, extent=(min(time_lag), max(time_lag), min(freq_lag), max(freq_lag)), aspect='auto', origin='lower')
     cbar2 = plt.colorbar()
     plt.savefig(fits+"_Autocorrelation_spectrum.png")
     #plt.show()
 
     if return_data:
-      return self, time_lag, freq_lag
+      return acf_data, time_lag, freq_lag
 
 def scint_params(acf, time_lag, freq_lag):
 
@@ -360,7 +378,8 @@ def secondary_spectrum(self):
     low  = np.median(scd)
     high = np.max(scd)
     
-    scd[:,nsub/2] = 0
+    #scd[:,nsub/2] = 0
+	scd[:, nsub//2] = 0
 
     # Plotting
     plt.imshow(scd[:int(scd.shape[0]/2), : int(scd.shape[1])], vmin = low, vmax = high, extent=(min(conjT), max(conjT), 0, max(conjF)), aspect = 'auto')
@@ -373,7 +392,7 @@ def noise_cal_single_peak(left_edge,right_edge):
     """
     Noise calibration of single peak pulsar data
     """
-    a.remove_baseline
+    a.remove_baseline()
     a.centre_max_bin()
     self = []
     w0 = (nbin/2) - left_edge
@@ -506,7 +525,7 @@ def integrated_profile():
     """
     b.tscrunch()
     b.fscrunch()
-    b.remove_baseline
+    b.remove_baseline()
     b.centre_max_bin()
     prof  = b[0].get_Profile(0,0).get_amps()
     prof  = prof - min(prof) # Brings the profile minimum to zero
@@ -523,7 +542,7 @@ def interpulse_profile():
     """
     b.tscrunch()
     b.fscrunch()
-    b.remove_baseline
+    b.remove_baseline()
     prof   = b[0].get_Profile(0,0).get_amps()
     b0 = b[0].get_Profile(0,0).find_max_bin()
     
