@@ -5,31 +5,26 @@ import psrchive
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
-from numpy import save
 
-parser = argparse.ArgumentParser(prog='pulspec', #name of the program file should be finalised
-                            usage='''python <script_name>.py [FITS] [OPTION]...\nPlease use -h command for help
+parser = argparse.ArgumentParser(prog='in-dev', #name of the program file should be finalised
+                            usage='''python in-dev.py [FITS] [OPTION]...\nPlease use -h command for help
                             ''',
                             description =  '''
 ----------------------------------------------------------------------
-   This Python scrtpt is under-development
+   This Python script is under-development
 
 Notes: 1. The nsub given in input is rounded to nearest possible
           subints (intrinsic to PSRCHIVE),
-       2. Nnumber of frequency channels should be a multiple of 2
-          For major uses, calibration of profiles are not neccessary,
+       2. Number of frequency channels should be a multiple of 2
+          For major uses, calibration of profiles are not necessary,
        3. ALWAYS DO scrunch polarisation channels to ONE, if NOT the case
        4. Keep number of phase bins maximum
        5. Bounds on color plot of secondary spectrum are hardcoded
           and can be optimised
        6. if DM assigned is zero or negative, then that command is
           ignored and default is used
-       7. linearisation of secondary spectrum is subject to further
-          development and will be implemented in another script
-       8. Thus all methods for extracting curvature parameter(s)
-          will be in added in another script
-       9. All spectra generation requires number of peaks in the
-          intergrated pulse profile (current version handles one or
+       7. All spectra generation requires number of peaks in the
+          integrated pulse profile (current version handles one or
           two gaussian peaks)
 
 -Piyush
@@ -121,143 +116,81 @@ args = parser.parse_args()
 
 # FITS file as input
 fits = args.fits
-print (fits)
+print(fits)
 
 # Loading the archives
-a = psrchive.Archive_load(fits) # This is used to generate spectra
-b = psrchive.Archive_load(fits) # This is used to get onpulse windows and integrated profile
+a = psrchive.Archive_load(fits)
+b = psrchive.Archive_load(fits)
 
-# Setting the given onpulse-width or keep default
-if (args.onw > 0):
-    N = args.onw
-else:
-    N = 10
+# Onpulse width parameter
+N = args.onw if args.onw and args.onw > 0 else 10
 
-# Assigning the DM value
-if args.DM:
-    if (args.DM > 0.0):
+# DM assignment
+if args.DM is not None:
+    if args.DM > 0.0:
         psrchive.Archive.set_dispersion_measure(a, args.DM)
     else:
-        print ("Please give valid DM value")
+        print("Please give valid DM value")
 
-# De-dispersing the archive
+# Dedisperse
 a.dedisperse()
 
-# Data-shape
-print ('Default data-shape (Nsub, Npol, Nchan, Nbin):') , (a.get_data().shape)
+# Optional scrunching BEFORE extracting numpy array
+if args.Nsub:
+    a.tscrunch_to_nsub(args.Nsub)
 
-# Observation time
+if args.Nchan:
+    a.fscrunch_to_nchan(args.Nchan)
+
+if args.Nbin:
+    a.bscrunch_to_nbin(args.Nbin)
+
+if args.Npol:
+    a.pscrunch_to_npol(args.Npol)
+
+# Extract numpy cube ONCE
+data = a.get_data()
+
+# Shape reporting
+shape = data.shape
+axes = ["Nsub (time)", "Npol", "Nchan (freq)", "Nbin (phase)"]
+
+print("\nData shape:")
+for i, (s, name) in enumerate(zip(shape, axes)):
+    print(f" Axis {i}: {name} = {s}")
+
+# Collapse polarization if already single state
+if data.shape[1] == 1:
+    data = data[:, 0, :, :]
+    print("\nPolarization collapsed -> 3D cube:", data.shape)
+
+# Derived dimensions (consistent downstream usage)
+nsub = data.shape[0]
+nchan = data.shape[1]
+nbin = data.shape[2]
+
+# Observation metadata
 tobs = a.integration_length()
-print ("Observation time: {} minutes or {} seconds".format(tobs/60.0, tobs))
+print("Observation time: {} minutes or {} seconds".format(tobs/60.0, tobs))
 
-# High and low edges of Bandwidth
 freq_lo = a.get_centre_frequency() - np.abs(a.get_bandwidth())/2.0
 freq_hi = a.get_centre_frequency() + np.abs(a.get_bandwidth())/2.0
 
-# DM value used
-print ("DM value used: {} parsec per cubic cm".format(a.get_dispersion_measure()))
+print("DM value used: {} pc cm^-3".format(a.get_dispersion_measure()))
+print("Bandwidth: {} MHz ({} - {} MHz)".format(np.abs(a.get_bandwidth()), freq_lo, freq_hi))
+print("Centre frequency: {} MHz".format(a.get_centre_frequency()))
 
-# Bandwidth
-print ("Bandwidth: {} MHz; ({} MHz - {} MHz)".format(np.abs(a.get_bandwidth()), freq_lo, freq_hi))
-print ('Centre frequency: {} MHz'.format(a.get_centre_frequency()))
-
-# Scrunching in time
-if args.Nsub:
-    a.tscrunch_to_nsub(args.Nsub)
-    print ("Nsub after scrunching = {}".format(a.get_data().shape[0]))
-    
-nsub  = a.get_data().shape[0]
-
-# Scrunching in frequency
-if args.Nchan:
-    a.fscrunch_to_nchan(args.Nchan)
-    print ("Nchan after scrunching = {}".format(a.get_data().shape[2]))
-
-nchan = a.get_data().shape[2]
-
-# Scrunching in bins
-if args.Nbin:
-    a.bscrunch_to_nbin(args.Nbin)
-    print ("Nbin after scrunching = {}".format(a.get_data().shape[3]))
-
-nbin  = a.get_data().shape[3]
-
-# Scrunching in polarization
-if args.Npol:
-    a.pscrunch_to_npol(args.Npol)
-    print ("Npol after scrunching = {}".format(a.get_data().shape[1]))
-    
-npol  = a.get_data().shape[1]
-
-# Telescope name
 tscope = str(a.get_telescope())
-print ("Telescope used: {}".format(tscope))
-
-#Calculation of RMS noise fluctuations for calibration
-rms = 0
-    
-if (tscope == str('or')) or (tscope == str('ort')) or (tscope == str('OR')) or (tscope == str('ORT')):
-    print ('(Ooty Radio Telecope)')
-    # Gain is 3 K/Jy, Tsys = 150 K
-    rms = 50/np.sqrt((np.abs(a.get_bandwidth())/nchan)*(tobs/nbin)) # in mJy; This is radiometer equation
-    
-elif (tscope == str('GMRT')) or (tscope == str('gmrt')):
-    print ('(Giant Meterwave Radio Telescope)')
-    # Gain is 0.38 K/Jy
-    if ((args.mode) and (args.Nant)):
-        mode = args.mode
-        print ('mode of observation is read...')
-        Nant = args.Nant
-        print ('number of antennae is read...')
-        
-        if mode == 'PA':
-            # PA mode radiometer equation
-            print ('mode of observation is Phased-Array')
-            if (args.Tsys):
-                Tsys = args.Tsys
-                print ('using Tsys...')
-                rms = ((Tsys)/0.38)*(1/np.sqrt((Nant**2)*2*(np.abs(a.get_bandwidth())/nchan)*(tobs/nbin))) # in mJy; This is radiometer equation
-                
-            elif (args.Tsky):
-                Tsky = args.Tsky
-                print ('using Tsky')
-                rms = ((Tsky+66)/0.38)*(1/np.sqrt((Nant**2)*2*(np.abs(a.get_bandwidth())/nchan)*(tobs/nbin))) # in mJy; This is radiometer equation
-
-        elif mode == 'IA':
-            # IA mode radiometer equation
-            print ('mode of observation is Incoherent-Array')
-            if (args.Tsys):
-                Tsys = args.Tsys
-                print ('using Tsys...')
-                rms = ((Tsys)/0.38)*(1/np.sqrt(Nant*2*(np.abs(a.get_bandwidth())/nchan)*(tobs/nbin))) # in mJy; This is radiometer equation
-                
-            elif (args.Tsky):
-                Tsky = args.Tsky
-                print ('using Tsky')
-                rms = ((Tsky+66)/0.38)*(1/np.sqrt(Nant*2*(np.abs(a.get_bandwidth())/nchan)*(tobs/nbin))) # in mJy; This is radiometer equation 
-        else:
-            print ("Error : please give valid mode of observation")
-        
-    else:
-        print ("Not enough calibration parameters, continuing without calibration")
-            
-else:
-    print ("Computing without calibration")
-
-if rms == 0:
-    print ("RMS flux variation is not computed")
-else:
-    print ("RMS flux variation is {} mJy".format(rms))
+print("Telescope used:", tscope)
 
 # Functions:
-
 from scipy.optimize import curve_fit
 def exp_decay(x, a, x0):
     return a * np.exp(-np.abs(x)/x0)
 def gaussian(x, a, x0):
     return a * np.exp(-(x**2)/(2*x0**2))
-
-
+def lorentzian(x, a, x0):
+    return a / (1 + (x/x0)**2)
 
 def dynamic_spectrum(self):
     """
@@ -325,12 +258,27 @@ def autocorrelation_spectrum(self, return_data=False):
 def scint_params(acf, time_lag, freq_lag):
 
     # central cuts
-    t_cut = acf[:, nchan//2]
-    f_cut = acf[nsub//2, :]
+    #t_cut = acf[:, nchan//2]
+    #f_cut = acf[nsub//2, :]
+
+	mid_t = acf.shape[0] // 2
+	mid_f = acf.shape[1] // 2
+
+	t_cut = acf[:, mid_f]   # time cut at zero freq lag
+	f_cut = acf[mid_t, :]   # freq cut at zero time lag
+	
+	t_cut = t_cut[mid_t:]
+	time_lag = time_lag[mid_t:]
+
+	f_cut = f_cut[mid_f:]
+	freq_lag = freq_lag[mid_f:]
 
     # normalise
-    t_cut = t_cut / np.max(t_cut)
-    f_cut = f_cut / np.max(f_cut)
+    #t_cut = t_cut / np.max(t_cut)
+    #f_cut = f_cut / np.max(f_cut)
+
+	t_cut = t_cut / t_cut[0]
+	f_cut = f_cut / f_cut[0]
 
     # fit
     try:
@@ -340,7 +288,8 @@ def scint_params(acf, time_lag, freq_lag):
         tau_d = np.nan
 
     try:
-        popt_f, _ = curve_fit(gaussian, freq_lag, f_cut, p0=[1, 0.1])
+        #popt_f, _ = curve_fit(gaussian, freq_lag, f_cut, p0=[1, 0.1])
+		popt_f, _ = curve_fit(lorentzian, freq_lag, f_cut, p0=[1, np.max(freq_lag)/10])
         delta_nu_d = np.abs(popt_f[1])
     except:
         delta_nu_d = np.nan
@@ -385,7 +334,7 @@ def secondary_spectrum(self):
     plt.imshow(scd[:int(scd.shape[0]/2), : int(scd.shape[1])], vmin = low, vmax = high, extent=(min(conjT), max(conjT), 0, max(conjF)), aspect = 'auto')
     cbar1 = plt.colorbar()
     plt.savefig(fits+"_Secondary_spectrum.png")
-    save(fits+'_secondary_spectrum.npy', scd[:int(scd.shape[0]/2), :int(scd.shape[1])] )
+    np.save(fits+'_secondary_spectrum.npy', scd[:int(scd.shape[0]/2), :int(scd.shape[1])] )
     #plt.show()
 
 def noise_cal_single_peak(left_edge,right_edge):
@@ -579,7 +528,15 @@ def scatter_tau_spectrum():
         peak = np.argmax(prof)
 
         x = np.arange(peak, nbin)
+		dt = tobs / (nsub * nbin)
+		x = (np.arange(peak, nbin) - peak) * dt
         y = prof[peak:]
+		y = prof[peak:]
+		y = y / np.max(y)
+
+		mask = y > 0.05
+		x = x[mask]
+		y = y[mask]
 
         if len(y) < 5:
             taus.append(np.nan)
