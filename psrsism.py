@@ -1,38 +1,23 @@
-# Code Author : Piyush M
-
-# Importing Libraries
-import psrchive
-import numpy as np
-import matplotlib.pyplot as plt
+#!/usr/bin/env python3
 import argparse
+parser = argparse.ArgumentParser(
+    usage='%(prog)s [ARCHIVE] [OPTION]...',
+    description="""
+psrism: Pulsar ISM analysis tool
+Author: Piyush Marmat, PhD Student
+Purpose: extract ISM related parameters from pulsar data
+""",
+    formatter_class=argparse.RawDescriptionHelpFormatter
+)
+parser.add_argument(
+    'archive',
+    help='Pulsar data file (FITS or PSRCHIVE format or any supported input)'
+)
 
-parser = argparse.ArgumentParser(prog='in-dev', #name of the program file should be finalised
-                            usage='''python in-dev.py [FITS] [OPTION]...\nPlease use -h command for help
-                            ''',
-                            description =  '''
-----------------------------------------------------------------------
-   This Python script is under-development
 
-Notes: 1. The nsub given in input is rounded to nearest possible
-          subints (intrinsic to PSRCHIVE),
-       2. Number of frequency channels should be a multiple of 2
-          For major uses, calibration of profiles are not necessary,
-       3. ALWAYS DO scrunch polarisation channels to ONE, if NOT the case
-       4. Keep number of phase bins maximum
-       5. Bounds on color plot of secondary spectrum are hardcoded
-          and can be optimised
-       6. if DM assigned is zero or negative, then that command is
-          ignored and default is used
-       7. All spectra generation requires number of peaks in the
-          integrated pulse profile (current version handles one or
-          two gaussian peaks)
 
--Piyush
-----------------------------------------------------------------------
-                            '''
-                                 , formatter_class=argparse.RawDescriptionHelpFormatter,
-                            add_help=True
-                            )
+
+
 group1 = parser.add_argument_group('Available plotting options')
 group2 = parser.add_argument_group('Flux Calibration options')
 group3 = parser.add_argument_group('PSRFITS metadata change options (Does not write it to disk)')
